@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CosmoScroll</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --deep: #03030a;
+    --void: #06060f;
+    --cosmos: #0a0a1a;
+    --nebula-purple: #7c3aed;
+    --nebula-pink: #db2777;
+    --nebula-cyan: #06b6d4;
+    --nebula-amber: #f59e0b;
+    --star-white: #f0f0ff;
+    --dust: rgba(240,240,255,0.55);
+    --muted: rgba(240,240,255,0.35);
+    --border: rgba(240,240,255,0.08);
+    --accent: #818cf8;
+    --font-display: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+    --font-serif: 'Instrument Serif', serif;
+  }
+
+  html { scroll-snap-type: y mandatory; overflow-y: scroll; height: 100%; background: var(--deep); }
+  body { height: 100%; font-family: var(--font-display); color: var(--star-white); overflow-x: hidden; }
+
+  /* ── STARFIELD CANVAS ── */
+  #starfield {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 32px;
+    background: linear-gradient(to bottom, rgba(3,3,10,0.9) 0%, transparent 100%);
+  }
+  .logo {
+    font-size: 18px; font-weight: 800; letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--accent), var(--nebula-cyan));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .logo span { font-weight: 400; font-family: var(--font-mono); font-size: 13px; -webkit-text-fill-color: var(--muted); color: var(--muted); margin-left: 6px; }
+  .nav-right { display: flex; align-items: center; gap: 16px; }
+  .nav-pill {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em;
+    color: var(--muted); border: 1px solid var(--border);
+    padding: 6px 14px; border-radius: 20px; cursor: pointer;
+    transition: all 0.2s; background: rgba(255,255,255,0.03);
+  }
+  .nav-pill:hover { color: var(--star-white); border-color: rgba(240,240,255,0.2); background: rgba(255,255,255,0.07); }
+  .nav-pill.active { color: var(--accent); border-color: var(--accent); background: rgba(129,140,248,0.1); }
+
+  /* ── SCROLL INDICATOR ── */
+  .scroll-indicator {
+    position: fixed; right: 28px; top: 50%; transform: translateY(-50%);
+    z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center;
+  }
+  .scroll-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--border); border: 1px solid rgba(240,240,255,0.15);
+    transition: all 0.3s; cursor: pointer;
+  }
+  .scroll-dot.active { background: var(--accent); border-color: var(--accent); transform: scale(1.4); }
+
+  /* ── CARD SECTION ── */
+  .card-section {
+    height: 100vh; scroll-snap-align: start;
+    position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: center;
+    padding: 80px 32px 32px;
+  }
+
+  .card-inner {
+    width: 100%; max-width: 780px;
+    display: flex; flex-direction: column;
+    height: 100%; gap: 0; overflow: hidden;
+  }
+
+  /* ── IMAGE FRAME ── */
+  .image-frame {
+    position: relative; border-radius: 18px; overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 0 60px rgba(129,140,248,0.08), 0 0 0 1px rgba(255,255,255,0.04);
+    flex: 1 1 0; min-height: 0;
+  }
+  .image-frame img {
+    width: 100%; height: 100%; object-fit: cover;
+    display: block; transition: transform 8s ease;
+  }
+  .card-section:hover .image-frame img { transform: scale(1.04); }
+
+  .image-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(3,3,10,0.7) 0%, transparent 50%);
+  }
+
+  /* corner tag */
+  .corner-tag {
+    position: absolute; top: 16px; left: 16px;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
+    color: var(--muted); background: rgba(3,3,10,0.6);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 10px; backdrop-filter: blur(6px);
+    text-transform: uppercase;
+  }
+
+  /* distance badge */
+  .distance-badge {
+    position: absolute; top: 16px; right: 16px;
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--nebula-cyan); background: rgba(6,182,212,0.1);
+    border: 1px solid rgba(6,182,212,0.25); border-radius: 6px;
+    padding: 5px 10px; backdrop-filter: blur(6px);
+  }
+
+  /* ── INFO STRIP (below image) ── */
+  .info-strip {
+    padding: 14px 2px 10px;
+    display: flex; flex-direction: column; gap: 7px;
+    flex-shrink: 0;
+  }
+
+  .card-meta {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+    letter-spacing: 0.06em; flex-wrap: wrap;
+  }
+  .meta-sep { color: var(--border); }
+  .card-category {
+    color: var(--accent); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .card-title {
+    font-size: clamp(22px, 3.5vw, 34px); font-weight: 700;
+    letter-spacing: -0.02em; line-height: 1.15;
+    color: var(--star-white);
+  }
+  .card-title em { font-family: var(--font-serif); font-style: italic; font-weight: 400; }
+
+  .card-desc {
+    font-size: 13px; line-height: 1.6; color: var(--dust);
+    max-width: 640px; font-weight: 400;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  /* ── TAGS ── */
+  .tag-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em;
+    padding: 4px 10px; border-radius: 20px; border: 1px solid;
+    text-transform: lowercase;
+  }
+  .tag-purple { color: #a78bfa; border-color: rgba(124,58,237,0.3); background: rgba(124,58,237,0.08); }
+  .tag-cyan   { color: #67e8f9; border-color: rgba(6,182,212,0.3);  background: rgba(6,182,212,0.08);  }
+  .tag-pink   { color: #f472b6; border-color: rgba(219,39,119,0.3); background: rgba(219,39,119,0.08); }
+  .tag-amber  { color: #fcd34d; border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.08); }
+
+  /* ── BOTTOM ACTION ROW ── */
+  .action-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0 0; border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .action-left { display: flex; gap: 10px; }
+  .action-btn {
+    display: flex; align-items: center; gap: 7px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 14px; cursor: pointer;
+    transition: all 0.2s; user-select: none;
+  }
+  .action-btn:hover { color: var(--star-white); border-color: rgba(240,240,255,0.15); background: rgba(255,255,255,0.07); }
+  .action-btn.liked { color: #f472b6; border-color: rgba(219,39,119,0.35); background: rgba(219,39,119,0.08); }
+  .action-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  .source-link {
+    font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+    text-decoration: none; letter-spacing: 0.06em;
+    display: flex; align-items: center; gap: 5px;
+    transition: color 0.2s;
+  }
+  .source-link:hover { color: var(--accent); }
+
+  /* ── SCROLL CUE ── */
+  .scroll-cue {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
+    color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 6px;
+    z-index: 100; transition: opacity 0.5s; text-transform: uppercase;
+    pointer-events: none;
+  }
+  .scroll-cue-arrow {
+    width: 1px; height: 28px;
+    background: linear-gradient(to bottom, var(--muted), transparent);
+    animation: pulse-down 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse-down { 0%,100%{ opacity: 0.3; transform: scaleY(0.8); } 50%{ opacity: 1; transform: scaleY(1); } }
+
+  /* ── HERO SECTION ── */
+  .hero-section {
+    height: 100vh; scroll-snap-align: start;
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 0 32px;
+  }
+  .hero-eyebrow {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.2em;
+    color: var(--accent); text-transform: uppercase; margin-bottom: 24px;
+    opacity: 0; animation: fade-up 0.8s 0.2s forwards;
+  }
+  .hero-title {
+    font-size: clamp(42px, 8vw, 92px); font-weight: 800;
+    letter-spacing: -0.04em; line-height: 0.95;
+    color: var(--star-white); margin-bottom: 28px;
+    opacity: 0; animation: fade-up 0.8s 0.4s forwards;
+  }
+  .hero-title .italic-word { font-family: var(--font-serif); font-style: italic; font-weight: 400; }
+  .hero-title .glow-word {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--nebula-cyan) 60%, var(--nebula-pink) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .hero-sub {
+    font-size: 16px; color: var(--dust); max-width: 440px; line-height: 1.7;
+    font-weight: 400; margin-bottom: 44px;
+    opacity: 0; animation: fade-up 0.8s 0.6s forwards;
+  }
+  .hero-cta {
+    display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+    opacity: 0; animation: fade-up 0.8s 0.8s forwards;
+  }
+  .btn-primary {
+    padding: 13px 28px; border-radius: 10px; font-family: var(--font-display);
+    font-size: 13px; font-weight: 600; cursor: pointer; border: none;
+    background: linear-gradient(135deg, var(--nebula-purple), var(--accent));
+    color: white; transition: all 0.2s; letter-spacing: 0.01em;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(124,58,237,0.4); }
+  .btn-secondary {
+    padding: 13px 28px; border-radius: 10px; font-family: var(--font-display);
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    background: transparent; color: var(--dust);
+    border: 1px solid var(--border); transition: all 0.2s;
+  }
+  .btn-secondary:hover { color: var(--star-white); border-color: rgba(240,240,255,0.2); background: rgba(255,255,255,0.05); }
+
+  .hero-stats {
+    position: absolute; bottom: 48px; display: flex; gap: 40px;
+    opacity: 0; animation: fade-up 0.8s 1s forwards;
+  }
+  .stat { text-align: center; }
+  .stat-num { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--star-white); }
+  .stat-label { font-family: var(--font-mono); font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 3px; }
+
+  @keyframes fade-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── CARD ENTRANCE ANIMATION ── */
+  .card-section { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .card-section.visible { opacity: 1; transform: translateY(0); }
+  .hero-section { opacity: 1; }
+
+  /* ── NEBULA ORBS (decorative) ── */
+  .orb {
+    position: fixed; border-radius: 50%; filter: blur(80px);
+    pointer-events: none; z-index: 0; animation: orb-drift 20s ease-in-out infinite alternate;
+  }
+  .orb-1 { width: 500px; height: 500px; background: rgba(124,58,237,0.06); top: -100px; left: -100px; animation-delay: 0s; }
+  .orb-2 { width: 400px; height: 400px; background: rgba(6,182,212,0.05); bottom: -100px; right: -100px; animation-delay: -7s; }
+  .orb-3 { width: 300px; height: 300px; background: rgba(219,39,119,0.04); top: 30%; right: 10%; animation-delay: -14s; }
+  @keyframes orb-drift { from { transform: translate(0,0) scale(1); } to { transform: translate(30px,20px) scale(1.1); } }
+
+  /* ── TOAST NOTIFICATION ── */
+  .toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: rgba(10,10,26,0.95); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 18px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--accent);
+    z-index: 200; opacity: 0; transition: all 0.3s; pointer-events: none;
+    white-space: nowrap; backdrop-filter: blur(10px);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── PROGRESS BAR ── */
+  .progress-bar {
+    position: fixed; top: 0; left: 0; height: 2px;
+    background: linear-gradient(to right, var(--nebula-purple), var(--nebula-cyan));
+    z-index: 200; transition: width 0.3s ease;
+  }
+
+  /* ── FACT BADGE ── */
+  .fact-badge {
+    position: absolute; bottom: 16px; left: 16px; right: 16px;
+    background: rgba(3,3,10,0.75); backdrop-filter: blur(10px);
+    border: 1px solid rgba(129,140,248,0.2); border-radius: 10px;
+    padding: 10px 14px; display: flex; align-items: flex-start; gap: 10px;
+  }
+  .fact-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .fact-text { font-family: var(--font-mono); font-size: 10px; line-height: 1.6; color: var(--dust); letter-spacing: 0.03em; }
+  .fact-text strong { color: var(--accent); }
+
+  @media (max-width: 600px) {
+    nav { padding: 16px 20px; }
+    .card-section { padding: 70px 16px 32px; }
+    .scroll-indicator { display: none; }
+    .hero-stats { gap: 24px; }
+    .hero-title { font-size: 42px; }
+    .action-row { flex-direction: column; gap: 12px; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="starfield"></canvas>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<div class="progress-bar" id="progressBar"></div>
+<div class="toast" id="toast"></div>
+
+<!-- NAV -->
+<nav>
+  <div>
+    <span class="logo">COSMO<span>/ scroll</span></span>
+  </div>
+  <div class="nav-right">
+    <div class="nav-pill active" id="filterAll" onclick="filterCards('all')">All</div>
+    <div class="nav-pill" id="filterImage" onclick="filterCards('image')">Images Only</div>
+    <div class="nav-pill" id="filterVideo" onclick="filterCards('video')">Videos</div>
+    <div class="nav-pill" id="btnLoadMore" onclick="loadMore()" style="border-color:rgba(129,140,248,0.3);color:var(--accent)">Load More ✦</div>
+  </div>
+</nav>
+
+<!-- SIDE SCROLL DOTS -->
+<div class="scroll-indicator" id="scrollDots"></div>
+
+<!-- SCROLL CUE -->
+<div class="scroll-cue" id="scrollCue">
+  <span>scroll</span>
+  <div class="scroll-cue-arrow"></div>
+</div>
+
+<!-- LOADING SCREEN -->
+<div id="loadingScreen" style="position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;background:var(--deep)">
+  <div style="font-size:28px;animation:spin 3s linear infinite">✦</div>
+  <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.2em;color:var(--muted);text-transform:uppercase">Connecting to NASA APOD</div>
+  <div style="font-family:var(--font-mono);font-size:10px;color:rgba(240,240,255,0.2)">Astronomy Picture of the Day</div>
+</div>
+
+<!-- DESCRIPTION MODAL -->
+<div id="descModal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(3,3,10,0.85);backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:32px">
+  <div style="max-width:620px;width:100%;background:rgba(10,10,26,0.98);border:1px solid var(--border);border-radius:18px;padding:32px;position:relative;max-height:80vh;overflow-y:auto">
+    <button onclick="closeModal()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--muted);font-family:var(--font-mono);font-size:11px;cursor:pointer">close ×</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<style>@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }</style>
+
+<!-- MAIN CONTAINER -->
+<div id="main">
+
+  <!-- HERO -->
+  <section class="hero-section">
+    <div class="hero-eyebrow">The universe, one scroll at a time</div>
+    <h1 class="hero-title">
+      <span class="italic-word">Explore</span><br>
+      <span class="glow-word">deep space</span><br>
+      differently
+    </h1>
+    <p class="hero-sub">Curated imagery and science from NASA, ESA, and the world's greatest observatories — delivered as a feed.</p>
+    <div class="hero-cta">
+      <button class="btn-primary" onclick="document.querySelector('.card-section')?.scrollIntoView({behavior:'smooth'})">Start scrolling ↓</button>
+      <button class="btn-secondary">About this project</button>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><div class="stat-num">∞</div><div class="stat-label">objects</div></div>
+      <div class="stat"><div class="stat-num">13.8B</div><div class="stat-label">years old</div></div>
+      <div class="stat"><div class="stat-num">93B</div><div class="stat-label">light years wide</div></div>
+    </div>
+  </section>
+
+</div><!-- /main -->
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const NASA_API_KEY = 'nOM6iYlXFtlbQsnlGlXBqP6xctjNm74beVtsS1AG';
+const APOD_COUNT = 12;
+
+// ─── FALLBACK DATA (shown if API unreachable e.g. opened as file://) ─────────
+const FALLBACK_APOD = [
+  {
+    date:'2024-01-10', title:'Pillars of Creation', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Pillars_of_creation_2014_HST_WFC3-UVIS_full-res_denoised.jpg/1280px-Pillars_of_creation_2014_HST_WFC3-UVIS_full-res_denoised.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/6/68/Pillars_of_creation_2014_HST_WFC3-UVIS_full-res_denoised.jpg',
+    explanation:'Newly formed stars are causing chaos in the Eagle Nebula. The towering pillars of gas and dust are being blasted by radiation and stellar winds from hot young stars. The James Webb Space Telescope captured this infrared view in 2022, revealing stars forming within the pillars themselves. Each pillar stretches several light-years in length.',
+    copyright:'NASA, ESA, CSA, STScI'
+  },
+  {
+    date:'2024-01-08', title:'Andromeda — Our Galactic Neighbor', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Andromeda_Galaxy_%28with_h-alpha%29.jpg/1280px-Andromeda_Galaxy_%28with_h-alpha%29.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/9/98/Andromeda_Galaxy_%28with_h-alpha%29.jpg',
+    explanation:'Our nearest large galactic neighbor, the Andromeda Galaxy (M31), is a spiral galaxy located about 2.5 million light-years away. It contains roughly a trillion stars and is on a slow collision course with the Milky Way, with the two galaxies expected to merge in approximately 4.5 billion years.',
+    copyright:'Adam Evans / CC BY 2.0'
+  },
+  {
+    date:'2024-01-06', title:'The Crab Nebula', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Crab_Nebula.jpg/1280px-Crab_Nebula.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/0/00/Crab_Nebula.jpg',
+    explanation:'The Crab Nebula is the remnant of a supernova explosion observed by astronomers in 1054 AD. At its center lies a neutron star spinning 30 times per second. This Hubble image reveals intricate filaments of gas and dust still expanding outward at over 1,500 km per second from the original explosion.',
+    copyright:'NASA, ESA, J. Hester and A. Loll (ASU)'
+  },
+  {
+    date:'2024-01-04', title:'Jupiter\'s Great Red Spot', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Jupiter_and_its_shrunken_Great_Red_Spot.jpg/1280px-Jupiter_and_its_shrunken_Great_Red_Spot.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/2/2b/Jupiter_and_its_shrunken_Great_Red_Spot.jpg',
+    explanation:"Jupiter's Great Red Spot is an anticyclonic storm larger than Earth that has been raging for at least 350 years. NASA's Juno spacecraft has been orbiting Jupiter since 2016, revealing unprecedented detail in the planet's cloud bands and atmospheric dynamics. Wind speeds inside the storm reach up to 432 mph.",
+    copyright:'NASA/JPL-Caltech/SwRI/MSSS'
+  },
+  {
+    date:'2024-01-02', title:'The Whirlpool Galaxy', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Messier51_sRGB.jpg/1280px-Messier51_sRGB.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/d/db/Messier51_sRGB.jpg',
+    explanation:'The Whirlpool Galaxy (M51) is a grand design spiral galaxy about 23 million light-years away, interacting with the smaller dwarf galaxy NGC 5195. The gravitational tug-of-war between them distorts the spiral arms and triggers bursts of new star formation, making this one of the most studied galaxy pairs in the sky.',
+    copyright:'NASA, ESA, S. Beckwith (STScI)'
+  },
+  {
+    date:'2023-12-30', title:'Saturn and Its Rings', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Saturn_during_Equinox.jpg/1280px-Saturn_during_Equinox.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/c/c7/Saturn_during_Equinox.jpg',
+    explanation:"Saturn's iconic rings are made of billions of chunks of ice and rock ranging from tiny grains to house-sized boulders. The rings span 282,000 km in diameter but can be as thin as 10 meters. This true-color image was captured by the Cassini spacecraft, which spent 13 years studying the Saturn system before its mission ended in 2017.",
+    copyright:'NASA/JPL-Caltech/Space Science Institute'
+  },
+  {
+    date:'2023-12-28', title:'The Orion Nebula', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Orion_Nebula_-_Hubble_2006_mosaic_18000.jpg/1280px-Orion_Nebula_-_Hubble_2006_mosaic_18000.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/f/f3/Orion_Nebula_-_Hubble_2006_mosaic_18000.jpg',
+    explanation:"The Orion Nebula (M42) is the closest large star-forming region to Earth at about 1,344 light-years away. Visible to the naked eye as a fuzzy star in Orion's sword, it contains thousands of young stars in various stages of formation. This Hubble mosaic is one of the most detailed images ever taken of a stellar nursery.",
+    copyright:'NASA, ESA, M. Robberto (STScI/ESA)'
+  },
+  {
+    date:'2023-12-26', title:'JWST First Deep Field — SMACS 0723', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Webb%27s_First_Deep_Field_%28full_resolution%29.png/1280px-Webb%27s_First_Deep_Field_%28full_resolution%29.png',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/c/c2/Webb%27s_First_Deep_Field_%28full_resolution%29.png',
+    explanation:"The James Webb Space Telescope's first deep field reveals galaxy cluster SMACS 0723 as it appeared 4.6 billion years ago. The cluster's immense mass acts as a gravitational lens, magnifying galaxies behind it that existed just hundreds of millions of years after the Big Bang — the deepest infrared view of the universe ever captured.",
+    copyright:'NASA, ESA, CSA, STScI'
+  },
+  {
+    date:'2023-12-24', title:'The Antennae Galaxies', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Antennae_galaxies_xl.jpg/1280px-Antennae_galaxies_xl.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/6/6c/Antennae_galaxies_xl.jpg',
+    explanation:'The Antennae Galaxies (NGC 4038/4039) are two spiral galaxies in the process of colliding and merging, about 45 million light-years away. The collision has triggered one of the most intense bursts of star formation ever observed, with thousands of new star clusters born from the chaos. This is a preview of what will happen when the Milky Way meets Andromeda.',
+    copyright:'NASA, ESA, Hubble Heritage Team'
+  },
+  {
+    date:'2023-12-22', title:'Mars — The Red Planet', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/OSIRIS_Mars_true_color.jpg/1280px-OSIRIS_Mars_true_color.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/0/02/OSIRIS_Mars_true_color.jpg',
+    explanation:"Mars is the fourth planet from the Sun and the most explored planet beyond Earth. Its reddish color comes from iron oxide on its surface. Mars hosts the solar system's largest volcano, Olympus Mons at 22 km high, and the longest canyon system, Valles Marineris, stretching over 4,000 km. Multiple rovers and landers are currently exploring its surface.",
+    copyright:'ESA/MPS/UPD/LAM/IAA/RSSD/INTA/UPM/DASP/IDA'
+  },
+  {
+    date:'2023-12-20', title:'The Ring Nebula', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/M57_The_Ring_Nebula.JPG/1280px-M57_The_Ring_Nebula.JPG',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/1/11/M57_The_Ring_Nebula.JPG',
+    explanation:'The Ring Nebula (M57) is the ejected outer shell of a dying Sun-like star, now illuminated by the hot white dwarf at its center. Located about 2,200 light-years away in the constellation Lyra, it is one of the most recognizable planetary nebulae in the sky and offers a preview of our own Sun\'s eventual fate in about 5 billion years.',
+    copyright:'NASA, ESA, Hubble Heritage Team'
+  },
+  {
+    date:'2023-12-18', title:'The Eagle Nebula', media_type:'image',
+    url:'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Eagle_nebula_pillars.jpg/1024px-Eagle_nebula_pillars.jpg',
+    hdurl:'https://upload.wikimedia.org/wikipedia/commons/1/1e/Eagle_nebula_pillars.jpg',
+    explanation:'The Eagle Nebula (M16) is an active star-forming region located about 6,500 light-years away. This iconic image from the Hubble Space Telescope shows towering columns of gas and dust known as the Pillars of Creation. Inside these pillars, new stars are being born, even as radiation from nearby hot stars slowly erodes the columns away.',
+    copyright:'NASA, ESA, STScI, J. Hester and P. Scowen (ASU)'
+  }
+];
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+let cards = [];
+let savedCards = new Set();
+let likedCards = new Set();
+let currentFilter = 'all';
+let visibleCards = [];
+
+// ─── TAG COLORS (cycling) ────────────────────────────────────────────────────
+const TAG_COLORS = ['purple', 'cyan', 'pink', 'amber'];
+
+// ─── APOD → CARD TRANSFORM ───────────────────────────────────────────────────
+function apodToCard(apod, index) {
+  // Generate tags from title words & copyright
+  const stopWords = new Set(['the','a','an','of','in','on','at','to','and','or','for','with','by','from','is','its','this','that','as','are','over','be','was','were','has','have','had','it','we','our','not','but','no','so','up','out','if','than','then','too','very','just','more','also','can','into','about','an','via','new']);
+  const titleWords = apod.title
+    .split(/[\s,\-–:()]+/)
+    .filter(w => w.length > 3 && !stopWords.has(w.toLowerCase()))
+    .slice(0, 3)
+    .map((w, i) => [w, TAG_COLORS[i % TAG_COLORS.length]]);
+
+  const dateTags = [[apod.date.slice(0,4), 'amber']];
+  const tags = [...titleWords, ...dateTags].slice(0, 4);
+
+  // Format date nicely
+  const d = new Date(apod.date + 'T12:00:00');
+  const dateLabel = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Truncate explanation to ~200 chars
+  const fullDesc = apod.explanation || '';
+  const desc = fullDesc.length > 240 ? fullDesc.slice(0, 238) + '…' : fullDesc;
+
+  // Pick the best image URL
+  const img = apod.hdurl || apod.url;
+
+  return {
+    origIndex: index,
+    category: 'apod',
+    categoryLabel: apod.media_type === 'video' ? 'NASA Video' : 'NASA APOD',
+    title: apod.title,
+    isVideo: apod.media_type === 'video',
+    videoUrl: apod.media_type === 'video' ? apod.url : null,
+    date: dateLabel,
+    apodDate: apod.date,
+    desc,
+    fullDesc,
+    tags,
+    img: apod.media_type === 'video' ? getVideoThumbnail(apod.url) : img,
+    copyright: apod.copyright ? apod.copyright.replace(/\n/g, ' ').trim() : 'NASA',
+    sourceUrl: `https://apod.nasa.gov/apod/ap${apod.date.replace(/-/g,'').slice(2)}.html`,
+    likes: Math.floor(8000 + Math.random() * 40000)
+  };
+}
+
+function getVideoThumbnail(url) {
+  const ytMatch = url.match(/(?:youtube\.com\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+  if (ytMatch) return `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+  return 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/NASA_logo.svg/800px-NASA_logo.svg.png';
+}
+
+// ─── FETCH FROM NASA APOD ────────────────────────────────────────────────────
+async function fetchAPOD() {
+  showLoading(true);
+
+  // Load fallback immediately so there's no blank screen during fetch
+  cards = FALLBACK_APOD.map((apod, i) => apodToCard(apod, i));
+  showLoading(false);
+  buildCards();
+
+  // Then try to upgrade with live data in the background
+  try {
+    const url = `https://api.nasa.gov/planetary/apod?api_key=${NASA_API_KEY}&count=${APOD_COUNT}`;
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error('NASA API returned ' + res.status);
+    const data = await res.json();
+    if (!Array.isArray(data)) throw new Error('Unexpected response format');
+    const sorted = data.sort((a, b) => b.date.localeCompare(a.date));
+    cards = sorted.map((apod, i) => apodToCard(apod, i));
+    buildCards();
+    showToast('✦ Live NASA feed loaded');
+  } catch (err) {
+    console.warn('NASA API unavailable, using curated fallback:', err.message);
+    // Already showing fallback — no action needed
+  }
+}
+
+function showLoading(on) {
+  document.getElementById('loadingScreen').style.display = on ? 'flex' : 'none';
+}
+
+function showError(msg) {
+  const el = document.getElementById('loadingScreen');
+  el.style.display = 'flex';
+  el.innerHTML = `
+    <div style="text-align:center">
+      <div style="font-size:32px;margin-bottom:16px">✦</div>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--muted);margin-bottom:8px">connection lost</div>
+      <div style="font-size:13px;color:var(--dust);margin-bottom:24px">${msg}</div>
+      <button onclick="fetchAPOD()" style="padding:10px 24px;border-radius:8px;background:rgba(129,140,248,0.15);border:1px solid var(--accent);color:var(--accent);font-family:var(--font-mono);font-size:12px;cursor:pointer">retry</button>
+    </div>
+  `;
+}
+
+// ─── STARFIELD ───────────────────────────────────────────────────────────────
+const canvas = document.getElementById('starfield');
+const ctx = canvas.getContext('2d');
+let stars = [];
+
+function initStars() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  stars = [];
+  const count = Math.floor((canvas.width * canvas.height) / 3000);
+  for (let i = 0; i < count; i++) {
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 1.2,
+      a: Math.random(),
+      speed: 0.001 + Math.random() * 0.003
+    });
+  }
+}
+
+function drawStars(t) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const s of stars) {
+    const pulse = 0.4 + 0.6 * Math.abs(Math.sin(t * s.speed * 1000));
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(220,220,255,${s.a * pulse})`;
+    ctx.fill();
+  }
+  requestAnimationFrame(drawStars);
+}
+
+initStars();
+requestAnimationFrame(drawStars);
+window.addEventListener('resize', initStars);
+
+// ─── BUILD CARDS ─────────────────────────────────────────────────────────────
+function buildCards() {
+  const main = document.getElementById('main');
+  main.querySelectorAll('.card-section').forEach(el => el.remove());
+
+  visibleCards = cards
+    .map((c, i) => ({ ...c, origIndex: i }))
+    .filter(c => {
+      if (currentFilter === 'image') return !c.isVideo;
+      if (currentFilter === 'video') return c.isVideo;
+      return true;
+    });
+
+  const dots = document.getElementById('scrollDots');
+  dots.innerHTML = '';
+
+  visibleCards.forEach((card, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'scroll-dot' + (i === 0 ? ' active' : '');
+    dot.onclick = () => scrollToCard(i);
+    dots.appendChild(dot);
+
+    const sec = document.createElement('section');
+    sec.className = 'card-section';
+    sec.dataset.index = i;
+
+    const tagHTML = card.tags.map(([label, color]) =>
+      `<span class="tag tag-${color}">${label}</span>`
+    ).join('');
+
+    const liked = likedCards.has(card.origIndex);
+    const saved = savedCards.has(card.origIndex);
+    const likeCount = liked ? card.likes + 1 : card.likes;
+    const titleEsc = card.title.replace(/'/g, "\\'");
+    const hasMore = card.fullDesc && card.fullDesc.length > card.desc.length;
+
+    sec.innerHTML = `
+      <div class="card-inner">
+        <div class="image-frame">
+          ${card.isVideo
+            ? `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;position:relative">
+                <img src="${card.img}" style="width:100%;height:100%;object-fit:cover;opacity:0.6">
+                <div style="position:absolute;width:56px;height:56px;border-radius:50%;background:rgba(129,140,248,0.25);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="window.open('${card.videoUrl}','_blank')">
+                  <svg viewBox="0 0 24 24" fill="currentColor" style="width:22px;height:22px;color:var(--accent);margin-left:3px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                </div>
+               </div>`
+            : `<img src="${card.img}" alt="${card.title}" loading="lazy" onerror="this.src='https://apod.nasa.gov/apod/image/2401/crab_nebula.jpg'">`
+          }
+          <div class="image-overlay"></div>
+          <div class="corner-tag">${card.isVideo ? '▶ Video' : 'NASA APOD'}</div>
+          <div class="distance-badge">${card.apodDate}</div>
+        </div>
+
+        <div class="info-strip">
+          <div class="card-meta">
+            <span class="card-category">astronomy picture of the day</span>
+            <span class="meta-sep">·</span>
+            <span>${card.date}</span>
+          </div>
+          <h2 class="card-title">${card.title}</h2>
+          <p class="card-desc">${card.desc}${hasMore ? ` <span style="color:var(--accent);cursor:pointer;font-family:var(--font-mono);font-size:11px" onclick="openModal(${card.origIndex})">read more →</span>` : ''}</p>
+          <div class="tag-row">${tagHTML}</div>
+        </div>
+
+        <div class="action-row">
+          <div class="action-left">
+            <button class="action-btn${liked ? ' liked' : ''}" onclick="toggleLike(${card.origIndex}, this)">
+              <svg viewBox="0 0 24 24" fill="${liked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+              <span class="like-count">${formatNum(likeCount)}</span>
+            </button>
+            <button class="action-btn${saved ? ' liked' : ''}" onclick="toggleSave(${card.origIndex}, this)">
+              <svg viewBox="0 0 24 24" fill="${saved ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+              <span>${saved ? 'saved' : 'save'}</span>
+            </button>
+            <button class="action-btn" onclick="shareCard('${titleEsc}')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+              <span>share</span>
+            </button>
+          </div>
+          <a class="source-link" href="${card.sourceUrl}" target="_blank">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            © ${card.copyright}
+          </a>
+        </div>
+      </div>
+    `;
+    main.appendChild(sec);
+  });
+
+  setupObserver();
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────────────────
+function openModal(origIndex) {
+  const card = cards[origIndex];
+  document.getElementById('modalContent').innerHTML = `
+    <div style="font-family:var(--font-mono);font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px">NASA · ${card.apodDate}</div>
+    <h3 style="font-size:20px;font-weight:700;letter-spacing:-0.02em;margin-bottom:16px;line-height:1.25">${card.title}</h3>
+    <p style="font-size:14px;line-height:1.8;color:var(--dust)">${card.fullDesc}</p>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">© ${card.copyright}</span>
+      <a href="${card.sourceUrl}" target="_blank" style="font-family:var(--font-mono);font-size:10px;color:var(--accent);text-decoration:none">view on NASA APOD →</a>
+    </div>
+  `;
+  const modal = document.getElementById('descModal');
+  modal.style.display = 'flex';
+}
+function closeModal() {
+  document.getElementById('descModal').style.display = 'none';
+}
+document.getElementById('descModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// ─── LOAD MORE ───────────────────────────────────────────────────────────────
+async function loadMore() {
+  const btn = document.getElementById('btnLoadMore');
+  btn.textContent = 'Loading…';
+  try {
+    const url = `https://api.nasa.gov/planetary/apod?api_key=${NASA_API_KEY}&count=8`;
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error('status ' + res.status);
+    const data = await res.json();
+    const existing = new Set(cards.map(c => c.apodDate));
+    const newCards = data
+      .filter(a => !existing.has(a.date))
+      .sort((a,b) => b.date.localeCompare(a.date))
+      .map((apod, i) => apodToCard(apod, cards.length + i));
+    if (newCards.length === 0) { showToast('No new items found'); btn.textContent = 'Load More ✦'; return; }
+    cards = [...cards, ...newCards];
+    buildCards();
+    btn.textContent = 'Load More ✦';
+    showToast(`✦ ${newCards.length} new discoveries added`);
+  } catch {
+    btn.textContent = 'Load More ✦';
+    showToast('Live feed unavailable — open in a browser for more');
+  }
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function formatNum(n) {
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return n;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ─── INTERACTIONS ─────────────────────────────────────────────────────────────
+function toggleLike(origIndex, btn) {
+  if (likedCards.has(origIndex)) {
+    likedCards.delete(origIndex);
+    btn.classList.remove('liked');
+    btn.querySelector('svg').setAttribute('fill', 'none');
+    btn.querySelector('.like-count').textContent = formatNum(cards[origIndex].likes);
+  } else {
+    likedCards.add(origIndex);
+    btn.classList.add('liked');
+    btn.querySelector('svg').setAttribute('fill', 'currentColor');
+    btn.querySelector('.like-count').textContent = formatNum(cards[origIndex].likes + 1);
+    showToast('✦ added to your liked objects');
+  }
+}
+
+function toggleSave(origIndex, btn) {
+  if (savedCards.has(origIndex)) {
+    savedCards.delete(origIndex);
+    btn.classList.remove('liked');
+    btn.querySelector('svg').setAttribute('fill', 'none');
+    btn.querySelector('span:last-child').textContent = 'save';
+    showToast('removed from saved');
+  } else {
+    savedCards.add(origIndex);
+    btn.classList.add('liked');
+    btn.querySelector('svg').setAttribute('fill', 'currentColor');
+    btn.querySelector('span:last-child').textContent = 'saved';
+    showToast('✦ saved to your collection');
+  }
+}
+
+function shareCard(title) {
+  if (navigator.share) {
+    navigator.share({ title: 'CosmoScroll', text: title, url: window.location.href });
+  } else {
+    navigator.clipboard?.writeText(window.location.href);
+    showToast('✦ link copied to clipboard');
+  }
+}
+
+// ─── FILTER ───────────────────────────────────────────────────────────────────
+function filterCards(filter) {
+  currentFilter = filter;
+  ['All','Image','Video'].forEach(f => {
+    document.getElementById('filter' + f)?.classList.remove('active');
+  });
+  document.getElementById('filter' + filter.charAt(0).toUpperCase() + filter.slice(1))?.classList.add('active');
+  buildCards();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── SCROLL OBSERVER ──────────────────────────────────────────────────────────
+function scrollToCard(i) {
+  document.querySelectorAll('.card-section')[i]?.scrollIntoView({ behavior: 'smooth' });
+}
+
+function setupObserver() {
+  const sections = document.querySelectorAll('.card-section');
+  const dots = document.querySelectorAll('.scroll-dot');
+  const scrollCue = document.getElementById('scrollCue');
+  let scrolled = false;
+
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        const i = parseInt(entry.target.dataset.index);
+        dots.forEach((d, j) => d.classList.toggle('active', j === i));
+
+        // Update progress bar
+        const total = sections.length;
+        document.getElementById('progressBar').style.width = ((i + 1) / total * 100) + '%';
+
+        if (!scrolled) {
+          scrolled = true;
+          scrollCue.style.opacity = '0';
+        }
+      }
+    });
+  }, { threshold: 0.5 });
+
+  sections.forEach(s => io.observe(s));
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+fetchAPOD();
+
+// Keyboard nav
+window.addEventListener('keydown', e => {
+  const sections = document.querySelectorAll('.card-section');
+  const active = document.querySelector('.scroll-dot.active');
+  const i = active ? [...document.querySelectorAll('.scroll-dot')].indexOf(active) : -1;
+  if (e.key === 'ArrowDown' && i < sections.length - 1) scrollToCard(i + 1);
+  if (e.key === 'ArrowUp' && i > 0) scrollToCard(i - 1);
+});
+</script>
+</body>
+</html>
